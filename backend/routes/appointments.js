@@ -33,6 +33,19 @@ router.post('/', requireStudent, async (req, res) => {
 
     const officialId = official_id;
 
+    // Check if official is available on this day of the week
+    const appointmentDate = new Date(appointment_date);
+    const dayOfWeek = appointmentDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+    const { rows: availability } = await pool.query(
+      "SELECT id FROM official_availability WHERE official_id = $1 AND day_of_week = $2",
+      [officialId, dayOfWeek]
+    );
+
+    if (availability.length === 0) {
+      return res.status(400).json({ error: `Selected official is not available on ${dayOfWeek}s` });
+    }
+
     // Check for existing appointment at same time
     const { rows: existingAppointments } = await pool.query(
       "SELECT id FROM appointments WHERE official_id = $1 AND appointment_date = $2 AND appointment_time = $3 AND status IN ('pending', 'approved')",
