@@ -1,0 +1,144 @@
+require('dotenv').config();
+const { Client } = require('pg');
+const bcrypt = require('bcrypt');
+
+async function initializeDatabase() {
+  const connectionString = process.env.DATABASE_URL;
+  
+  // For PostgreSQL, we usually connect directly to the database.
+  // Neon provides the database name in the connection string.
+  const clientConfig = connectionString ? {
+    connectionString,
+    ssl: { rejectUnauthorized: false }
+  } : {
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 5432
+  };
+
+  const client = new Client(clientConfig);
+
+  try {
+    await client.connect();
+    console.log('Connected to PostgreSQL server');
+
+    // Create users table
+    // PostgreSQL uses SERIAL for auto-increment
+    // ENUMs can be done via CHECK constraints for simplicity
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        full_name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        student_number VARCHAR(50) UNIQUE,
+        title VARCHAR(255),
+        password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(20) NOT NULL CHECK (role IN ('student', 'admin', 'official')),
+        status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'rejected')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Users table created or already exists');
+
+    // Create index
+    await client.query('CREATE INDEX IF NOT EXISTS idx_student_number ON users(student_number)');
+
+    // Create appointments table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS appointments (
+        id SERIAL PRIMARY KEY,
+        appointment_code VARCHAR(50) UNIQUE NOT NULL,
+        student_id INT NOT NULL REFERENCES users(id),
+        official_id INT NOT NULL REFERENCES users(id),
+        purpose TEXT NOT NULL,
+        appointment_date DATE NOT NULL,
+        appointment_time TIME NOT NULL,
+        mode VARCHAR(20) NOT NULL CHECK (mode IN ('Virtual', 'Physical')),
+        status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'in_progress', 'completed', 'missed')),
+        reminder_sent SMALLINT DEFAULT 0,
+        student_present SMALLINT DEFAULT 0,
+        official_present SMALLINT DEFAULT 0,
+        started_at TIMESTAMP,
+        ended_at TIMESTAMP,
+        presence_note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Appointments table created or already exists');
+
+    // Create unique index to prevent double-booking
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS ux_official_date_time ON appointments (official_id, appointment_date, appointment_time)');
+    console.log('Unique index on appointments created or already exists');
+
+    // Create official_availability table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS official_availability (
+        id SERIAL PRIMARY KEY,
+        official_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        day_of_week VARCHAR(20) NOT NULL CHECK (day_of_week IN ('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (official_id, day_of_week)
+      )
+    `);
+    console.log('Official availability table created or already exists');
+
+    // Create notifications table (referenced in scheduler.js)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id),
+        appointment_id INT REFERENCES appointments(id),
+        type VARCHAR(50) NOT NULL,
+        message TEXT NOT NULL,
+        is_read SMALLINT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Notifications table created or already exists');
+
+    // Create scheduler_state table (referenced in scheduler.js)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS scheduler_state (
+        id SERIAL PRIMARY KEY,
+        appointment_id INT NOT NULL REFERENCES appointments(id),
+        operation_type VARCHAR(50) NOT NULL,
+        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        details TEXT
+      )
+    `);
+    console.log('Scheduler state table created or already exists');
+
+    // Seed admin user
+    const adminPasswordHash = await bcrypt.hash('Admin123!', 10);
+    await client.query(
+      `INSERT INTO users (full_name, email, password_hash, role, status) 
+       VALUES ($1, $2, $3, $4, $5) 
+       ON CONFLICT (email) DO NOTHING`,
+      ['System Admin', 'admin@cavendish.edu.zm', adminPasswordHash, 'admin', 'active']
+    );
+    console.log('Admin user seeded (if not exists)');
+
+    // Seed official user
+    const officialPasswordHash = await bcrypt.hash('Dean123!', 10);
+    await client.query(
+      `INSERT INTO users (full_name, email, title, password_hash, role, status) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       ON CONFLICT (email) DO NOTHING`,
+      ['Precious Mate', 'dean@cavendish.edu.zm', 'Dean of Students', officialPasswordHash, 'official', 'active']
+    );
+    console.log('Official user seeded (if not exists)');
+
+    console.log('Database initialization completed successfully!');
+    
+  } catch (error) {
+    console.error('Database initialization failed:', error);
+    process.exit(1);
+  } finally {
+    await client.end();
+  }
+}
+
+initializeDatabase();

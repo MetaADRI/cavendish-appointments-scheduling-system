@@ -1,0 +1,47 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "public/**/*",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "server.js"
+    },
+    {
+      "src": "/login",
+      "dest": "public/login.html"
+    },
+    {
+      "src": "/signup",
+      "dest": "public/signup.html"
+    },
+    {
+      "src": "/dashboard",
+      "dest": "public/dashboard.html"
+    },
+    {
+      "src": "/admin-dashboard",
+      "dest": "public/admin-dashboard.html"
+    },
+    {
+      "src": "/official-dashboard",
+      "dest": "public/official-dashboard.html"
+    },
+    {
+      "src": "/availability",
+      "dest": "public/availability.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "public/$1"
+    }
+  ]
+}
