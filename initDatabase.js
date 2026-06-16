@@ -25,22 +25,22 @@ async function initializeDatabase() {
     console.log('Connected to PostgreSQL server');
 
     // Create users table
-    // PostgreSQL uses SERIAL for auto-increment
-    // ENUMs can be done via CHECK constraints for simplicity
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         full_name VARCHAR(255) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
         student_number VARCHAR(50) UNIQUE,
-        title VARCHAR(255),
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(20) NOT NULL CHECK (role IN ('student', 'admin', 'official')),
         status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'rejected')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('Users table created or already exists');
+    
+    // Ensure title column exists (from migrate_add_title.js)
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS title VARCHAR(255)');
+    console.log('Users table and title column checked');
 
     // Create index
     await client.query('CREATE INDEX IF NOT EXISTS idx_student_number ON users(student_number)');
@@ -57,16 +57,18 @@ async function initializeDatabase() {
         appointment_time TIME NOT NULL,
         mode VARCHAR(20) NOT NULL CHECK (mode IN ('Virtual', 'Physical')),
         status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'in_progress', 'completed', 'missed')),
-        reminder_sent SMALLINT DEFAULT 0,
-        student_present SMALLINT DEFAULT 0,
-        official_present SMALLINT DEFAULT 0,
-        started_at TIMESTAMP,
-        ended_at TIMESTAMP,
-        presence_note TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('Appointments table created or already exists');
+
+    // Ensure slot tracking columns exist (from migrate_slot_tracking.js)
+    await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent SMALLINT DEFAULT 0');
+    await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS student_present SMALLINT DEFAULT 0');
+    await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS official_present SMALLINT DEFAULT 0');
+    await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS started_at TIMESTAMP');
+    await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS ended_at TIMESTAMP');
+    await client.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS presence_note TEXT');
+    console.log('Appointments table and tracking columns checked');
 
     // Create unique index to prevent double-booking
     await client.query('CREATE UNIQUE INDEX IF NOT EXISTS ux_official_date_time ON appointments (official_id, appointment_date, appointment_time)');
@@ -116,10 +118,10 @@ async function initializeDatabase() {
     await client.query(
       `INSERT INTO users (full_name, email, password_hash, role, status) 
        VALUES ($1, $2, $3, $4, $5) 
-       ON CONFLICT (email) DO NOTHING`,
+       ON CONFLICT (email) DO UPDATE SET password_hash = $3, role = 'admin', status = 'active'`,
       ['System Admin', 'admin@cavendish.edu.zm', adminPasswordHash, 'admin', 'active']
     );
-    console.log('Admin user seeded (if not exists)');
+    console.log('Admin user seeded and updated (if exists)');
 
     // Seed official user
     const officialPasswordHash = await bcrypt.hash('Dean123!', 10);

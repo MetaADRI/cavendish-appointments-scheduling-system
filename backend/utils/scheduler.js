@@ -74,7 +74,8 @@ async function createNotification(userId, appointmentId, type, message) {
  * Send reminders 10 minutes before appointment
  */
 async function processReminders() {
-  const reminderTime = new Date(getCurrentUTC().getTime() + REMINDER_MINUTES * 60 * 1000);
+  const now = getCurrentUTC();
+  const reminderTime = new Date(now.getTime() + REMINDER_MINUTES * 60 * 1000);
   const reminderTimeEnd = new Date(reminderTime.getTime() + SCHEDULER_INTERVAL);
 
   try {
@@ -89,7 +90,7 @@ async function processReminders() {
       JOIN users o ON a.official_id = o.id
       WHERE a.status = 'approved'
         AND a.reminder_sent = 0
-        AND (a.appointment_date + a.appointment_time) BETWEEN $1 AND $2
+        AND (a.appointment_date::timestamp + a.appointment_time::interval) BETWEEN $1::timestamp AND $2::timestamp
     `, [reminderTime, reminderTimeEnd]);
 
     for (const appt of appointments) {
@@ -144,7 +145,7 @@ async function processPresencePrompts() {
       JOIN users o ON a.official_id = o.id
       WHERE a.status = 'approved'
         AND a.started_at IS NULL
-        AND (a.appointment_date + a.appointment_time) BETWEEN $1 AND $2
+        AND (a.appointment_date::timestamp + a.appointment_time::interval) BETWEEN $1::timestamp AND $2::timestamp
     `, [now, windowEnd]);
 
     for (const appt of appointments) {
