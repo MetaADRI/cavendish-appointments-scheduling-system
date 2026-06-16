@@ -149,13 +149,17 @@ async function initializeDatabase() {
     console.log('Default availability seeded for official');
 
     console.log('Database initialization completed successfully!');
-    
+    return true;
   } catch (error) {
     console.error('Database initialization failed:', error);
-    process.exit(1);
+    throw error;
   } finally {
     await client.end();
   }
 }
 
-initializeDatabase();
+module.exports = { initializeDatabase };
+
+if (require.main === module) {
+  initializeDatabase().catch(() => process.exit(1));
+}

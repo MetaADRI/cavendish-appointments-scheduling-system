@@ -16,6 +16,9 @@ const publicRoutes = require('./backend/routes/public');
 // Import scheduler
 const { startScheduler, getSchedulerStatus } = require('./backend/utils/scheduler');
 
+// Import database initializer
+const { initializeDatabase } = require('./initDatabase');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -104,7 +107,18 @@ module.exports = app;
 
 // Start server if not running as a module (e.g., Vercel/Tests)
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Cavendish Appointment System running on http://localhost:${PORT}`);
-  });
+  // Run database initialization before starting server
+  initializeDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Cavendish Appointment System running on http://localhost:${PORT}`);
+      });
+    })
+    .catch(err => {
+      console.error('CRITICAL: Failed to initialize database on startup:', err);
+      // Still start the server so it can report errors
+      app.listen(PORT, () => {
+        console.log(`Server started with DATABASE ERRORS on http://localhost:${PORT}`);
+      });
+    });
 }
