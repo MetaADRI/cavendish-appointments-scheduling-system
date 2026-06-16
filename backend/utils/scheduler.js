@@ -98,8 +98,9 @@ async function processReminders() {
         continue;
       }
 
-      const appointmentTime = new Date(`${appt.appointment_date} ${appt.appointment_time}`);
-      const message = `Reminder: Your appointment (${appt.appointment_code}) starts in 10 minutes at ${appointmentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      // Format time for message - use appointment_time directly
+      const timeStr = appt.appointment_time.toString().substring(0, 5);
+      const message = `Reminder: Your appointment (${appt.appointment_code}) starts in 10 minutes at ${timeStr}`;
 
       // Send to student
       await createNotification(appt.student_id, appt.id, 'reminder', message);
@@ -119,7 +120,8 @@ async function processReminders() {
       log(`Reminder sent for appointment ${appt.appointment_code}`);
     }
   } catch (error) {
-    log(`Error processing reminders: ${error.message}`, 'ERROR');
+    log(`Error processing reminders: ${error.message || error}`, 'ERROR');
+    if (error.stack) console.error(error.stack);
   }
 }
 
@@ -171,7 +173,8 @@ async function processPresencePrompts() {
       log(`Presence prompt sent for appointment ${appt.appointment_code}`);
     }
   } catch (error) {
-    log(`Error processing presence prompts: ${error.message}`, 'ERROR');
+    log(`Error processing presence prompts: ${error.message || error}`, 'ERROR');
+    if (error.stack) console.error(error.stack);
   }
 }
 
@@ -205,7 +208,8 @@ async function checkPresenceStatus() {
       log(`Appointment ${appt.appointment_code} moved to in_progress`);
     }
   } catch (error) {
-    log(`Error checking presence status: ${error.message}`, 'ERROR');
+    log(`Error checking presence status: ${error.message || error}`, 'ERROR');
+    if (error.stack) console.error(error.stack);
   }
 }
 
@@ -276,7 +280,8 @@ async function finalizeSessions() {
       log(`Appointment ${appt.appointment_code} finalized: ${newStatus} (${presenceNote})`);
     }
   } catch (error) {
-    log(`Error finalizing sessions: ${error.message}`, 'ERROR');
+    log(`Error finalizing sessions: ${error.message || error}`, 'ERROR');
+    if (error.stack) console.error(error.stack);
   }
 }
 

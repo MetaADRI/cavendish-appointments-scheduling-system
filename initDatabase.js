@@ -123,13 +123,28 @@ async function initializeDatabase() {
 
     // Seed official user
     const officialPasswordHash = await bcrypt.hash('Dean123!', 10);
-    await client.query(
+    const officialEmail = 'dean@cavendish.edu.zm';
+    
+    const officialResult = await client.query(
       `INSERT INTO users (full_name, email, title, password_hash, role, status) 
        VALUES ($1, $2, $3, $4, $5, $6) 
-       ON CONFLICT (email) DO NOTHING`,
-      ['Precious Mate', 'dean@cavendish.edu.zm', 'Dean of Students', officialPasswordHash, 'official', 'active']
+       ON CONFLICT (email) DO UPDATE SET role = 'official', status = 'active'
+       RETURNING id`,
+      ['Precious Mate', officialEmail, 'Dean of Students', officialPasswordHash, 'official', 'active']
     );
-    console.log('Official user seeded (if not exists)');
+    
+    const officialId = officialResult.rows[0].id;
+    console.log(`Official user seeded with ID: ${officialId}`);
+
+    // Seed default availability for the official (Monday - Friday)
+    const workingDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    for (const day of workingDays) {
+      await client.query(
+        'INSERT INTO official_availability (official_id, day_of_week) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [officialId, day]
+      );
+    }
+    console.log('Default availability seeded for official');
 
     console.log('Database initialization completed successfully!');
     
