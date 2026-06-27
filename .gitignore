@@ -3,4 +3,3 @@ node_modules/
 .DS_Store
 backups/
 *.pdf
-package-lock.json

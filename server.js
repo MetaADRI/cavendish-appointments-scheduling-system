@@ -1,9 +1,13 @@
 const express = require('express');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 require('dotenv').config();
+
+const pool = require('./backend/config/database');
+const { initializeDatabase } = require('./initDatabase');
 
 // Import routes
 const authRoutes = require('./backend/routes/auth');
@@ -13,14 +17,9 @@ const officialRoutes = require('./backend/routes/official');
 const appointmentRoutes = require('./backend/routes/appointments');
 const publicRoutes = require('./backend/routes/public');
 
-// Import scheduler
-const { startScheduler, getSchedulerStatus } = require('./backend/utils/scheduler');
-
-// Import database initializer
-const { initializeDatabase } = require('./initDatabase');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isVercel = process.env.VERCEL === '1';
 
 // Middleware
 app.use(cors());
@@ -28,14 +27,19 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Session configuration
+// Session configuration with PostgreSQL store (works across serverless instances)
 app.use(session({
+  store: new pgSession({
+    pool,
+    tableName: 'user_sessions',
+    createTableIfMissing: true
+  }),
   secret: process.env.SESSION_SECRET || 'cavendish_secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true in production with HTTPS
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    secure: isVercel || process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000
   }
 }));
 
@@ -91,34 +95,33 @@ app.post('/logout', (req, res) => {
   res.redirect('/');
 });
 
-// Scheduler health check endpoint (admin only)
-app.get('/api/admin/scheduler-status', (req, res) => {
-  if (!req.session.user || req.session.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
-  res.json(getSchedulerStatus());
-});
-
-// Start scheduler (behind feature flag)
-startScheduler();
-
 // Export for Vercel
 module.exports = app;
 
-// Start server if not running as a module (e.g., Vercel/Tests)
+// On Vercel, init DB silently on cold start (best-effort, won't crash)
+if (isVercel) {
+  initializeDatabase().catch(err => {
+    console.error('Vercel DB init failed (will retry on next cold start):', err.message);
+  });
+}
+
+// Local development server with scheduler
 if (require.main === module) {
-  // Run database initialization before starting server
-  initializeDatabase()
-    .then(() => {
-      app.listen(PORT, () => {
-        console.log(`Cavendish Appointment System running on http://localhost:${PORT}`);
-      });
-    })
-    .catch(err => {
-      console.error('CRITICAL: Failed to initialize database on startup:', err);
-      // Still start the server so it can report errors
-      app.listen(PORT, () => {
-        console.log(`Server started with DATABASE ERRORS on http://localhost:${PORT}`);
-      });
+  (async () => {
+    try {
+      await initializeDatabase();
+      console.log('Database initialized');
+
+      if (process.env.ENABLE_SLOT_TRACKER === 'true') {
+        const { startScheduler } = require('./backend/utils/scheduler');
+        startScheduler();
+      }
+    } catch (err) {
+      console.error('Startup error:', err);
+    }
+
+    app.listen(PORT, () => {
+      console.log(`Cavendish Appointment System running on http://localhost:${PORT}`);
     });
+  })();
 }

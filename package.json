@@ -5,10 +5,13 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "init-db": "node initDatabase.js"
+    "init-db": "node initDatabase.js",
+    "scheduler": "node scheduler-worker.js",
+    "vercel-build": "node initDatabase.js || echo 'DB init skipped during build (will run on cold start)'"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
