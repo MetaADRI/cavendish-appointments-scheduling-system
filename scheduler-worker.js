@@ -2,7 +2,7 @@ require('dotenv').config();
 const { startScheduler, getSchedulerStatus } = require('./backend/utils/scheduler');
 const { initializeDatabase } = require('./initDatabase');
 
-const PORT = process.env.SCHEDULER_PORT || 4000;
+const PORT = process.env.PORT || process.env.SCHEDULER_PORT || 4000;
 
 async function main() {
   console.log('=== Cavendish Scheduler Worker ===');
